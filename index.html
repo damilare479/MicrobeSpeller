@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Microbe Speller — Speed Race</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/mqtt@5.3.4/dist/mqtt.min.js"></script>
+<style>
+:root{
+  --bg:#04070f;--surface:#080f1e;--panel:#0d1628;--border:rgba(100,210,255,.12);
+  --accent:#00e5ff;--accent2:#7c3aed;--accent3:#10b981;--warn:#f59e0b;--err:#ef4444;
+  --text:#e2eaf7;--muted:#5a7090;--p1:#00e5ff;--p2:#f472b6;
+  --fh:'Syne',sans-serif;--fm:'DM Mono',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--fh);background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+.bg-grid{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(rgba(0,229,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.03) 1px,transparent 1px);
+  background-size:40px 40px}
+.glow{position:fixed;z-index:0;border-radius:50%;filter:blur(130px);pointer-events:none}
+.glow1{width:600px;height:600px;background:rgba(0,229,255,.055);top:-200px;left:-150px}
+.glow2{width:500px;height:500px;background:rgba(124,58,237,.065);bottom:-150px;right:-100px}
+.shell{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;padding:20px 14px 60px;min-height:100vh}
+
+/* ── HEADER ── */
+.header{width:100%;max-width:900px;display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:8px}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-icon{width:42px;height:42px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:20px}
+.logo-text{font-size:1.1rem;font-weight:800;letter-spacing:-.5px}
+.logo-text span{color:var(--accent)}
+.hbadges{display:flex;gap:7px;flex-wrap:wrap}
+.badge{font-family:var(--fm);font-size:.65rem;padding:4px 9px;border-radius:999px;background:var(--panel);border:1px solid var(--border);color:var(--muted)}
+.badge.live{border-color:var(--accent3);color:var(--accent3)}
+.badge.btn{cursor:pointer}.badge.btn:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ── SCREENS ── */
+.screen{width:100%;max-width:540px;animation:fadeIn .3s ease}
+.screen.hidden{display:none}
+.lobby-title{font-size:2.1rem;font-weight:800;margin-bottom:8px;text-align:center}
+.lobby-sub{color:var(--muted);font-size:.86rem;text-align:center;margin-bottom:28px;line-height:1.6}
+.lobby-cards{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-bottom:24px}
+.lcard{flex:1;min-width:190px;max-width:230px;padding:24px 18px;border-radius:20px;background:var(--surface);border:2px solid var(--border);cursor:pointer;transition:all .25s;text-align:center}
+.lcard:hover{border-color:var(--accent);background:rgba(0,229,255,.06);box-shadow:0 0 28px rgba(0,229,255,.13);transform:translateY(-3px)}
+.lcard .icon{font-size:2.6rem;margin-bottom:10px}
+.lcard .ltitle{font-weight:800;font-size:1rem;margin-bottom:5px}
+.lcard .ldesc{font-size:.73rem;color:var(--muted);line-height:1.5}
+.form-group{margin-bottom:16px}
+.form-label{font-family:var(--fm);font-size:.68rem;text-transform:uppercase;letter-spacing:2px;color:var(--muted);margin-bottom:7px;display:block}
+.form-label.hi{color:var(--p1)}
+.form-input{width:100%;padding:13px 15px;border-radius:13px;border:1.5px solid var(--border);background:var(--panel);color:var(--text);font-family:var(--fh);font-size:.93rem;font-weight:700;outline:none;transition:border-color .2s}
+.form-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,229,255,.09)}
+.form-input.mono{font-family:var(--fm);letter-spacing:5px;font-size:1.15rem;text-transform:uppercase;text-align:center}
+.big-btn{width:100%;padding:16px;border-radius:16px;font-size:1rem;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#000;border:none;cursor:pointer;transition:all .2s;box-shadow:0 0 36px rgba(0,229,255,.22);margin-bottom:10px}
+.big-btn:hover{transform:translateY(-2px);box-shadow:0 0 52px rgba(0,229,255,.38)}
+.sec-btn{width:100%;padding:13px;border-radius:14px;font-size:.88rem;font-weight:700;background:var(--panel);color:var(--muted);border:1px solid var(--border);cursor:pointer;transition:all .2s}
+.sec-btn:hover{border-color:var(--accent);color:var(--accent)}
+.rc-box{background:var(--panel);border:1.5px solid var(--accent);border-radius:15px;padding:18px;text-align:center;margin-bottom:16px}
+.rc-lbl{font-family:var(--fm);font-size:.65rem;text-transform:uppercase;letter-spacing:3px;color:var(--accent);margin-bottom:8px}
+.rc-code{font-family:var(--fm);font-size:2.6rem;font-weight:500;letter-spacing:10px}
+.rc-copy{font-size:.72rem;color:var(--muted);margin-top:7px;cursor:pointer;font-family:var(--fm)}
+.rc-copy:hover{color:var(--accent)}
+.wait-dots::after{content:'';animation:dots 1.4s infinite}
+@keyframes dots{0%{content:''}33%{content:'.'}66%{content:'..'}100%{content:'...'}}
+.spill{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:999px;font-family:var(--fm);font-size:.75rem;margin-bottom:14px}
+.spill.connecting{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.28);color:var(--warn)}
+.spill.connected{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.28);color:var(--accent3)}
+.spill.error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.28);color:var(--err)}
+.spill-dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.spill-dot.pulse{animation:dpulse 1s ease infinite}
+@keyframes dpulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* ── GAME AREA ── */
+#gameArea{display:none;width:100%;flex-direction:column;align-items:center}
+
+/* ══════════════════════════════════════════════
+   THE SCOREBOARD — most important element
+   Both players see EACH OTHER's live score here
+══════════════════════════════════════════════ */
+.scoreboard{
+  width:100%;max-width:900px;
+  display:grid;grid-template-columns:1fr auto 1fr;
+  background:var(--panel);border:2px solid var(--border);
+  border-radius:20px;overflow:hidden;margin-bottom:12px;
+  transition:border-color .4s
+}
+.scoreboard.p1-leading{border-color:rgba(0,229,255,.35)}
+.scoreboard.p2-leading{border-color:rgba(244,114,182,.35)}
+.sb-side{padding:16px 20px;transition:background .4s}
+.sb-side.winner-bg{background:rgba(245,158,11,.06)}
+.sb-right{text-align:right}
+.sb-name{font-family:var(--fm);font-size:.65rem;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px;opacity:.75}
+.sb-score{font-size:2.8rem;font-weight:800;font-family:var(--fm);line-height:1;transition:transform .25s}
+.sb-score.bump{animation:scorebump .35s ease}
+@keyframes scorebump{0%{transform:scale(1)}50%{transform:scale(1.28)}100%{transform:scale(1)}}
+.sb-wins{font-size:.68rem;font-family:var(--fm);color:var(--muted);margin-top:3px}
+.sb-streak{font-size:.68rem;font-family:var(--fm);margin-top:2px}
+.sb-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 14px;border-left:1px solid var(--border);border-right:1px solid var(--border)}
+.sb-vs{font-size:.85rem;font-weight:800;color:var(--muted)}
+.sb-word{font-family:var(--fm);font-size:.58rem;color:var(--muted);margin-top:5px;white-space:nowrap}
+.you-tag{font-family:var(--fm);font-size:.55rem;color:var(--accent3);letter-spacing:2px;margin-bottom:3px}
+
+/* ══════════════════════════════
+   RACE BAR — live typing feed
+══════════════════════════════ */
+.race-bar{
+  width:100%;max-width:900px;
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:10px;margin-bottom:12px
+}
+.racer{background:var(--panel);border:1.5px solid var(--border);border-radius:14px;padding:11px 15px;transition:all .25s}
+.racer.typing{border-color:rgba(100,210,255,.28)}
+.racer.r-correct{border-color:var(--accent3);background:rgba(16,185,129,.07);animation:gpulse .5s ease}
+.racer.r-wrong{border-color:rgba(239,68,68,.4);animation:shake .35s ease}
+@keyframes gpulse{0%{box-shadow:0 0 0 0 rgba(16,185,129,.5)}100%{box-shadow:0 0 0 10px rgba(16,185,129,0)}}
+.racer-label{font-family:var(--fm);font-size:.6rem;text-transform:uppercase;letter-spacing:2px;margin-bottom:5px;opacity:.7}
+.racer-text{font-family:var(--fm);font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:19px;color:var(--muted)}
+.racer-badge{display:inline-block;font-family:var(--fm);font-size:.65rem;margin-top:3px;padding:2px 7px;border-radius:999px}
+
+/* ══════════════════════════════
+   ROUND RESULT BANNER
+══════════════════════════════ */
+.round-banner{
+  width:100%;max-width:900px;
+  border-radius:16px;padding:14px 20px;margin-bottom:12px;
+  display:none;align-items:center;gap:14px;
+  border:2px solid;animation:popIn .3s cubic-bezier(.175,.885,.32,1.275)
+}
+.round-banner.show{display:flex}
+.round-banner.i-won{background:rgba(245,158,11,.09);border-color:var(--warn)}
+.round-banner.opp-won{background:rgba(244,114,182,.07);border-color:var(--p2)}
+.round-banner.nobody{background:rgba(90,112,144,.1);border-color:var(--muted)}
+@keyframes popIn{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+.rb-icon{font-size:1.9rem;flex-shrink:0}
+.rb-text{flex:1}
+.rb-main{font-size:1rem;font-weight:800}
+.rb-sub{font-size:.72rem;opacity:.7;font-family:var(--fm);margin-top:2px}
+.rb-pts{font-family:var(--fm);font-size:1.5rem;font-weight:800;margin-left:auto;flex-shrink:0}
+
+/* ── SOLO STATS ── */
+.stats-row{width:100%;max-width:900px;display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:12px}
+.sc{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:13px;text-align:center}
+.sv{font-size:1.6rem;font-weight:800;background:linear-gradient(135deg,var(--accent),#0090ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;line-height:1}
+.sl{font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-top:4px}
+.streak-wrap{width:100%;max-width:900px;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:13px 17px;margin-bottom:12px;display:flex;align-items:center;gap:11px}
+.sdots{display:flex;gap:4px;flex:1}
+.sd{flex:1;height:6px;border-radius:999px;background:var(--border);transition:background .4s}
+.sd.hit{background:linear-gradient(90deg,var(--accent3),var(--accent))}
+
+/* ── STAGE ── */
+.stage-ribbon{width:100%;max-width:900px;display:flex;gap:7px;margin-bottom:9px}
+.stab{flex:1;display:flex;flex-direction:column;align-items:center;padding:7px 3px;border-radius:11px;background:var(--panel);border:1px solid var(--border);font-size:.62rem;font-weight:700;color:var(--muted);transition:all .3s}
+.stab .em{font-size:1.1rem;margin-bottom:2px}
+.stab.done{border-color:var(--accent3);color:var(--accent3)}
+.stab.active{border-color:var(--accent);color:var(--accent);background:rgba(0,229,255,.06)}
+.gprog{width:100%;max-width:900px;height:3px;background:var(--panel);border-radius:999px;margin-bottom:12px;overflow:hidden}
+.gprog-bar{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:999px;transition:width .6s ease}
+
+/* ── MAIN CARD ── */
+.main-card{width:100%;max-width:900px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:24px;margin-bottom:12px;position:relative;overflow:hidden}
+.main-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.4}
+.mode-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px}
+.mpill{padding:4px 11px;border-radius:999px;font-size:.68rem;font-weight:700;border:1px solid var(--border);background:var(--panel);color:var(--muted);cursor:pointer;transition:all .2s}
+.mpill.on{border-color:var(--accent);color:var(--accent);background:rgba(0,229,255,.07)}
+.timer-row{display:flex;align-items:center;gap:13px;margin-bottom:16px}
+.tsw{position:relative;width:54px;height:54px;flex-shrink:0}
+.tsvg{width:54px;height:54px;transform:rotate(-90deg)}
+.ttrack{fill:none;stroke:var(--panel);stroke-width:5}
+.tarc{fill:none;stroke:var(--accent);stroke-width:5;stroke-linecap:round;transition:stroke-dashoffset .9s linear,stroke .5s}
+.tnum{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--fm);font-size:.95rem;font-weight:500}
+.att-row{display:flex;gap:6px;align-items:center;margin-left:auto}
+.adot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);transition:all .3s}
+.adot.used{background:var(--panel);box-shadow:none;border:1px solid var(--border)}
+.word-wrap{text-align:center;padding:20px 0 16px}
+.wprompt{font-size:.68rem;font-family:var(--fm);text-transform:uppercase;letter-spacing:3px;margin-bottom:14px}
+.wslots{display:flex;justify-content:center;flex-wrap:wrap;gap:4px 3px;min-height:52px;align-items:flex-end;padding:0 6px}
+.ws{display:inline-flex;align-items:flex-end;justify-content:center;width:21px;height:36px;border-bottom:2px solid var(--muted);font-family:var(--fm);font-size:.88rem;color:transparent;transition:all .3s;flex-shrink:0}
+.ws.space{border-bottom:none;width:13px}
+.ws.rev{color:var(--accent3);border-color:var(--accent3);font-size:1.05rem}
+.ws.hfirst{color:var(--warn);border-color:var(--warn)}
+.wlen{font-size:.65rem;font-family:var(--fm);color:var(--muted);margin-top:8px;letter-spacing:1px}
+.ctrl-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px}
+.btn{display:flex;align-items:center;gap:5px;padding:9px 14px;border:none;border-radius:11px;font-family:var(--fh);font-size:.78rem;font-weight:700;cursor:pointer;transition:all .2s}
+.btn-p{background:linear-gradient(135deg,var(--accent),#0090ff);color:#000}
+.btn-p:hover{transform:translateY(-2px)}
+.btn-g{background:var(--panel);color:var(--text);border:1px solid var(--border)}
+.btn-g:hover{border-color:var(--accent);color:var(--accent)}
+.btn-w{background:rgba(245,158,11,.12);color:var(--warn);border:1px solid rgba(245,158,11,.28)}
+.hint-box{display:none;padding:11px 15px;background:rgba(245,158,11,.09);border:1px solid rgba(245,158,11,.28);border-radius:11px;margin-bottom:12px;font-family:var(--fm);font-size:.8rem;color:var(--warn)}
+.hint-box.show{display:block}
+.spell-input{width:100%;padding:15px 17px;font-family:var(--fm);font-size:.97rem;font-weight:500;background:var(--panel);border:1.5px solid var(--border);border-radius:13px;color:var(--text);outline:none;transition:border-color .2s,box-shadow .2s;letter-spacing:1px;margin-bottom:9px}
+.spell-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,229,255,.09)}
+.spell-input.correct{border-color:var(--accent3);box-shadow:0 0 0 3px rgba(16,185,129,.12)}
+.spell-input.wrong{border-color:var(--err);box-shadow:0 0 0 3px rgba(239,68,68,.12);animation:shake .38s ease}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
+.cfb{display:flex;flex-wrap:wrap;gap:2px;min-height:24px;padding:0 2px;margin-bottom:12px}
+.cf{font-family:var(--fm);font-size:.88rem;padding:1px 3px;border-radius:4px}
+.cf.ok{color:var(--accent3);background:rgba(16,185,129,.09)}
+.cf.bad{color:var(--err);background:rgba(239,68,68,.09)}
+.cf.miss{color:var(--warn);background:rgba(245,158,11,.09)}
+.sub-row{display:flex;gap:7px}
+.btn-sub{flex:1;justify-content:center;font-size:.92rem;padding:13px;border-radius:13px}
+.tax-panel{width:100%;max-width:900px;background:var(--panel);border:1px solid rgba(0,229,255,.18);border-radius:14px;padding:13px 17px;margin-bottom:12px;display:none}
+.tax-panel.vis{display:block;animation:slideUp .28s ease}
+@keyframes slideUp{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.tax-t{font-size:.65rem;font-family:var(--fm);color:var(--accent);text-transform:uppercase;letter-spacing:3px;margin-bottom:7px}
+.tax-tags{display:flex;flex-wrap:wrap;gap:6px}
+.ttag{padding:3px 10px;border-radius:999px;background:rgba(0,229,255,.06);border:1px solid rgba(0,229,255,.12);font-size:.72rem;font-family:var(--fm)}
+.hist-panel{width:100%;max-width:900px;background:var(--surface);border:1px solid var(--border);border-radius:17px;padding:16px;margin-bottom:12px}
+.hist-t{font-size:.65rem;font-family:var(--fm);color:var(--muted);text-transform:uppercase;letter-spacing:3px;margin-bottom:9px}
+.hist-list{display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto}
+.hi{display:flex;align-items:center;gap:7px;padding:6px 9px;border-radius:8px;background:var(--panel);font-family:var(--fm);font-size:.75rem}
+.hi-w{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hi-r{font-weight:700;flex-shrink:0}
+.hi-pts{color:var(--warn);font-weight:700;margin-left:auto;flex-shrink:0}
+.ok{color:var(--accent3)}.bad{color:var(--err)}.sk{color:var(--warn)}
+
+/* ── VICTORY ── */
+.vic-overlay{display:none;position:fixed;inset:0;z-index:100;background:rgba(4,7,15,.93);align-items:center;justify-content:center;flex-direction:column}
+.vic-overlay.show{display:flex;animation:fadeIn .4s ease}
+.vic-box{background:var(--surface);border:1px solid var(--accent);border-radius:24px;padding:36px 42px;text-align:center;box-shadow:0 0 70px rgba(0,229,255,.16);max-width:500px;width:90%}
+.vic-em{font-size:3.8rem;display:block;margin-bottom:10px}
+.vic-title{font-size:2rem;font-weight:800;margin-bottom:7px}
+.vic-sub{color:var(--muted);margin-bottom:20px;font-size:.88rem}
+.vic-scores{display:flex;gap:12px;justify-content:center;margin-bottom:20px;flex-wrap:wrap}
+.vsc{flex:1;min-width:120px;max-width:180px;padding:14px;border-radius:14px;border:2px solid var(--border)}
+.vsc.win{border-color:var(--warn);background:rgba(245,158,11,.05)}
+.vsn{font-weight:800;margin-bottom:3px;font-size:.9rem}
+.vss{font-size:2.2rem;font-weight:800;font-family:var(--fm)}
+.vsb{font-size:.7rem;color:var(--muted);margin-top:2px}
+.confetti-canvas{position:fixed;inset:0;pointer-events:none;z-index:99}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.listening{animation:listen 1.2s ease infinite}
+@keyframes listen{0%,100%{box-shadow:0 0 18px rgba(0,229,255,.2)}50%{box-shadow:0 0 44px rgba(0,229,255,.5)}}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+@media(max-width:600px){
+  .stats-row{grid-template-columns:repeat(2,1fr)}
+  .stage-ribbon,.streak-wrap{display:none}
+  .race-bar{grid-template-columns:1fr}
+  .vic-box{padding:26px 18px}
+  .sb-score{font-size:2.2rem}
+}
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+<div class="glow glow1"></div>
+<div class="glow glow2"></div>
+<canvas class="confetti-canvas" id="confettiCanvas"></canvas>
+
+<div class="shell">
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon">🧫</div>
+      <div>
+        <div class="logo-text">Microbe<span>Speller</span></div>
+        <div style="font-size:.6rem;color:var(--muted);font-family:var(--fm)">SPEED RACE · FIRST CORRECT WINS</div>
+      </div>
+    </div>
+    <div class="hbadges">
+      <span class="badge" id="connBadge">Offline</span>
+      <span class="badge" id="modeBadge">Lobby</span>
+      <span class="badge btn" onclick="goLobby()">↩ Lobby</span>
+    </div>
+  </header>
+
+  <!-- MODE SELECT -->
+  <div class="screen" id="screenMode">
+    <div class="lobby-title">🧫 Microbe Speller</div>
+    <div class="lobby-sub">Master microbiology nomenclature.<br>Race your opponent — <strong style="color:var(--warn)">first correct answer wins the round!</strong></div>
+    <div class="lobby-cards">
+      <div class="lcard" onclick="goScreen('screenSolo')">
+        <div class="icon">🧬</div>
+        <div class="ltitle">Single Player</div>
+        <div class="ldesc">Progress through 4 difficulty stages. Build streaks and earn points.</div>
+      </div>
+      <div class="lcard" onclick="goScreen('screenMulti')">
+        <div class="icon">⚡</div>
+        <div class="ltitle">Speed Race 2P</div>
+        <div class="ldesc">Same word, both players race. First to spell it correctly wins the round points!</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SOLO -->
+  <div class="screen hidden" id="screenSolo">
+    <div class="lobby-title" style="font-size:1.7rem;margin-bottom:22px">Solo Game</div>
+    <div class="form-group">
+      <label class="form-label hi">Your Name</label>
+      <input class="form-input" id="soloName" value="Player 1" maxlength="16"/>
+    </div>
+    <button class="big-btn" onclick="startSolo()">Start →</button>
+    <button class="sec-btn" onclick="goScreen('screenMode')">← Back</button>
+  </div>
+
+  <!-- MULTI -->
+  <div class="screen hidden" id="screenMulti">
+    <div class="lobby-title" style="font-size:1.7rem;margin-bottom:5px">Speed Race Lobby</div>
+    <div class="lobby-sub" style="margin-bottom:20px">
+      Both players see the same word at the same time.<br>
+      <strong style="color:var(--warn)">⚡ First correct answer wins the round points.</strong>
+    </div>
+    <div class="form-group">
+      <label class="form-label hi">Your Name</label>
+      <input class="form-input" id="multiName" value="Player 1" maxlength="16"/>
+    </div>
+    <div id="multiStatus"></div>
+    <div id="createSection">
+      <button class="big-btn" onclick="createRoom()">🎮 Create Room</button>
+      <div style="text-align:center;color:var(--muted);font-size:.78rem;margin:9px 0">— or join a friend —</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Room Code</label>
+      <input class="form-input mono" id="joinCode" placeholder="ENTER CODE" maxlength="6"
+        oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')"/>
+    </div>
+    <button class="big-btn" onclick="joinRoom()">Join Room →</button>
+    <div id="roomCodeDisplay" style="display:none">
+      <div class="rc-box">
+        <div class="rc-lbl">Share this code with your opponent</div>
+        <div class="rc-code" id="rcCode">——</div>
+        <div class="rc-copy" onclick="copyCode()">📋 Tap to copy</div>
+      </div>
+      <div style="text-align:center;color:var(--muted);font-family:var(--fm);font-size:.78rem">
+        Waiting for opponent<span class="wait-dots"></span>
+      </div>
+    </div>
+    <div style="margin-top:12px"></div>
+    <button class="sec-btn" onclick="goScreen('screenMode')">← Back</button>
+  </div>
+
+  <!-- GAME -->
+  <div id="gameArea">
+
+    <!-- SCOREBOARD: both players always see each other's live score -->
+    <div class="scoreboard" id="scoreboard" style="display:none">
+      <div class="sb-side" id="sbMe">
+        <div class="you-tag">YOU</div>
+        <div class="sb-name" id="sbMeName" style="color:var(--p1)">Player 1</div>
+        <div class="sb-score" id="sbMeScore" style="color:var(--p1)">0</div>
+        <div class="sb-wins" id="sbMeWins">0 rounds won</div>
+        <div class="sb-streak" id="sbMeStreak" style="color:var(--accent3)"></div>
+      </div>
+      <div class="sb-mid">
+        <div class="sb-vs">VS</div>
+        <div class="sb-word" id="sbWord">Word 1</div>
+      </div>
+      <div class="sb-side sb-right" id="sbOpp">
+        <div class="you-tag" style="visibility:hidden">—</div>
+        <div class="sb-name" id="sbOppName" style="color:var(--p2)">Opponent</div>
+        <div class="sb-score" id="sbOppScore" style="color:var(--p2)">0</div>
+        <div class="sb-wins" id="sbOppWins">0 rounds won</div>
+        <div class="sb-streak" id="sbOppStreak" style="color:var(--p2)"></div>
+      </div>
+    </div>
+
+    <!-- RACE BAR: live typing from both players -->
+    <div class="race-bar" id="raceBar" style="display:none">
+      <div class="racer" id="racerMe">
+        <div class="racer-label" id="racerMeLabel" style="color:var(--p1)">You</div>
+        <div class="racer-text" id="racerMeText">—</div>
+        <div class="racer-badge" id="racerMeBadge"></div>
+      </div>
+      <div class="racer" id="racerOpp">
+        <div class="racer-label" id="racerOppLabel" style="color:var(--p2)">Opponent</div>
+        <div class="racer-text" id="racerOppText">waiting…</div>
+        <div class="racer-badge" id="racerOppBadge"></div>
+      </div>
+    </div>
+
+    <!-- ROUND RESULT -->
+    <div class="round-banner" id="roundBanner">
+      <div class="rb-icon" id="rbIcon">🏆</div>
+      <div class="rb-text">
+        <div class="rb-main" id="rbMain">You got it first!</div>
+        <div class="rb-sub" id="rbSub">Next word in 3s…</div>
+      </div>
+      <div class="rb-pts" id="rbPts">+7</div>
+    </div>
+
+    <!-- SOLO STATS -->
+    <div class="stats-row" id="statsRow">
+      <div class="sc"><div class="sv" id="sScore">0</div><div class="sl">Score</div></div>
+      <div class="sc"><div class="sv" id="sAcc">—</div><div class="sl">Accuracy</div></div>
+      <div class="sc"><div class="sv" id="sBest">0</div><div class="sl">Best Streak</div></div>
+      <div class="sc"><div class="sv" id="sWords">0</div><div class="sl">Attempts</div></div>
+    </div>
+    <div class="streak-wrap" id="streakWrap">
+      <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:2px;flex-shrink:0">Streak</div>
+      <div class="sdots" id="sdots"></div>
+      <div style="font-size:1.2rem;font-weight:800;font-family:var(--fm);color:var(--accent3);flex-shrink:0" id="scount">0</div>
+    </div>
+
+    <div class="stage-ribbon" id="stageRibbon"></div>
+    <div class="gprog"><div class="gprog-bar" id="gprogBar"></div></div>
+
+    <!-- MAIN CARD -->
+    <div class="main-card" id="mainCard">
+      <div class="mode-row" id="modeRow">
+        <span class="mpill" id="mTimed"    onclick="toggleMode('timed')">⚡ Timed</span>
+        <span class="mpill" id="mHidden"   onclick="toggleMode('hidden')">🔡 1st Letter</span>
+        <span class="mpill" id="mAudio"    onclick="toggleMode('audio')">🎧 Audio Only</span>
+        <span class="mpill" id="mPractice" onclick="toggleMode('practice')">♾ Practice</span>
+      </div>
+      <div class="timer-row">
+        <div class="tsw">
+          <svg class="tsvg" viewBox="0 0 54 54">
+            <circle class="ttrack" cx="27" cy="27" r="22"/>
+            <circle class="tarc" id="tarc" cx="27" cy="27" r="22" stroke-dasharray="138.2" stroke-dashoffset="0"/>
+          </svg>
+          <div class="tnum" id="tnum">—</div>
+        </div>
+        <div>
+          <div style="font-size:.65rem;color:var(--muted);font-family:var(--fm)">TIME REMAINING</div>
+          <div style="font-size:.75rem;color:var(--muted)" id="tlabel">Enable Timed Mode</div>
+        </div>
+        <div class="att-row" id="attRow"></div>
+      </div>
+      <div class="word-wrap">
+        <div class="wprompt" id="wprompt" style="color:var(--muted)">Spell the organism</div>
+        <div class="wslots" id="wslots"></div>
+        <div class="wlen" id="wlen"></div>
+      </div>
+      <div class="ctrl-row">
+        <button class="btn btn-p" id="speakBtn" onclick="speakWord()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+          Pronounce
+        </button>
+        <button class="btn btn-g" onclick="showHint()">💡 Hint</button>
+        <button class="btn btn-g" onclick="showTax()">🔬 Info</button>
+        <button class="btn btn-g" id="shuffleBtn" onclick="shuffleWord()">🔀 Shuffle</button>
+      </div>
+      <div class="hint-box" id="hintBox"></div>
+      <input class="spell-input" id="spellInput"
+        placeholder="Type the organism name…"
+        autocomplete="off" autocorrect="off" spellcheck="false"
+        oninput="onType()" onkeydown="if(event.key==='Enter')submit()"/>
+      <div class="cfb" id="cfb"></div>
+      <div class="sub-row">
+        <button class="btn btn-p btn-sub" onclick="submit()">✓ Submit</button>
+        <button class="btn btn-w" onclick="skip()">Skip</button>
+        <button class="btn btn-g" onclick="goLobby()">↩</button>
+      </div>
+    </div>
+
+    <div class="tax-panel" id="taxPanel">
+      <div class="tax-t">Organism Info</div>
+      <div class="tax-tags" id="taxTags"></div>
+    </div>
+
+    <div class="hist-panel">
+      <div class="hist-t">Round History</div>
+      <div class="hist-list" id="histList">
+        <div style="color:var(--muted);font-size:.75rem;font-family:var(--fm)">No rounds yet…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- VICTORY -->
+<div class="vic-overlay" id="vicOverlay">
+  <div class="vic-box">
+    <span class="vic-em" id="vicEm">🏆</span>
+    <div class="vic-title" id="vicTitle">Game Over!</div>
+    <div class="vic-sub" id="vicSub"></div>
+    <div class="vic-scores" id="vicScores"></div>
+    <button class="big-btn" onclick="goLobby()">Play Again</button>
+  </div>
+</div>
+
+<script>
+/* ════════════════════════════
+   WORD DATABASE
+════════════════════════════ */
+const ALL_WORDS=[
+  {w:'Escherichia coli',hint:'Common gut bacterium; genetics model organism',stage:0},
+  {w:'Staphylococcus aureus',hint:'"Golden" Gram+; causes skin & wound infections',stage:0},
+  {w:'Lactobacillus acidophilus',hint:'Probiotic in yogurt; produces lactic acid',stage:0},
+  {w:'Bacillus subtilis',hint:'Spore-forming soil rod; classic lab model organism',stage:0},
+  {w:'Streptococcus pyogenes',hint:'Chain cocci; causes strep throat & scarlet fever',stage:0},
+  {w:'Salmonella enterica',hint:'Named after D.E. Salmon; major foodborne pathogen',stage:0},
+  {w:'Listeria monocytogenes',hint:'Cold-tolerant foodborne pathogen; dangerous in pregnancy',stage:0},
+  {w:'Campylobacter jejuni',hint:'Leading cause of bacterial diarrhea worldwide',stage:0},
+  {w:'Enterococcus faecalis',hint:'Normal gut flora; increasingly antibiotic-resistant',stage:0},
+  {w:'Bacillus cereus',hint:'Soil bacterium; causes food poisoning via toxins',stage:0},
+  {w:'Streptococcus pneumoniae',hint:'Diplococci; major cause of pneumonia & meningitis',stage:0},
+  {w:'Mycoplasma pneumoniae',hint:'Smallest self-replicating bacterium; no cell wall',stage:0},
+  {w:'Clostridium perfringens',hint:'Gas gangrene; major food poisoning cause',stage:0},
+  {w:'Proteus mirabilis',hint:'Swarming motility; urinary tract infections',stage:0},
+  {w:'Serratia marcescens',hint:'Red pigment prodigiosin; opportunistic pathogen',stage:0},
+  {w:'Shigella sonnei',hint:'Most common shigellosis in developed countries',stage:0},
+  {w:'Haemophilus influenzae',hint:'Despite name, causes bacterial infections',stage:0},
+  {w:'Neisseria gonorrhoeae',hint:'Diplococci; sexually transmitted; causes gonorrhea',stage:0},
+  {w:'Neisseria meningitidis',hint:'Diplococcus; causes bacterial meningitis',stage:0},
+  {w:'Vibrio parahaemolyticus',hint:'Seafood gastroenteritis; marine halophile',stage:0},
+  {w:'Yersinia enterocolitica',hint:'Cold-growing; yersiniosis from undercooked pork',stage:0},
+  {w:'Legionella pneumophila',hint:'Intracellular; caused 1976 Legionnaires outbreak',stage:0},
+  {w:'Moraxella catarrhalis',hint:'Gram diplococcus; respiratory infections in children',stage:0},
+  {w:'Klebsiella oxytoca',hint:'Encapsulated; antibiotic-related colitis',stage:0},
+  {w:'Staphylococcus epidermidis',hint:'Coagulase negative; biofilm on prosthetics',stage:0},
+  {w:'Pseudomonas aeruginosa',hint:'Blue-green pigment; ESKAPE pathogen',stage:1},
+  {w:'Helicobacter pylori',hint:'Spiral urease+; causes peptic ulcers',stage:1},
+  {w:'Clostridium botulinum',hint:'Most potent biological toxin known',stage:1},
+  {w:'Vibrio cholerae',hint:'Comma-shaped; cholera via contaminated water',stage:1},
+  {w:'Rickettsia rickettsii',hint:'Obligate intracellular; Rocky Mountain spotted fever',stage:1},
+  {w:'Bordetella pertussis',hint:'Causes whooping cough; cilia-destroying toxin',stage:1},
+  {w:'Chlamydia trachomatis',hint:'Obligate intracellular; most common bacterial STI',stage:1},
+  {w:'Bartonella henselae',hint:'Cat scratch disease; transmitted by cat fleas',stage:1},
+  {w:'Brucella melitensis',hint:'Goat-associated; causes undulant fever',stage:1},
+  {w:'Leptospira interrogans',hint:'Weil disease; contaminated water or rodents',stage:1},
+  {w:'Stenotrophomonas maltophilia',hint:'Intrinsically resistant to carbapenems',stage:1},
+  {w:'Burkholderia cepacia',hint:'Lung infections in cystic fibrosis',stage:1},
+  {w:'Citrobacter freundii',hint:'AmpC beta-lactamase producer; nosocomial infections',stage:1},
+  {w:'Enterobacter cloacae',hint:'ESKAPE pathogen; intrinsic AmpC',stage:1},
+  {w:'Francisella tularensis',hint:'Highly infectious; tularemia; BSL-3',stage:1},
+  {w:'Coxiella burnetii',hint:'Causes Q fever; extremely infectious',stage:1},
+  {w:'Ehrlichia chaffeensis',hint:'Tick-borne; human monocytic ehrlichiosis',stage:1},
+  {w:'Anaplasma phagocytophilum',hint:'Ixodes ticks; granulocytic anaplasmosis',stage:1},
+  {w:'Elizabethkingia meningoseptica',hint:'Neonatal meningitis; intrinsic resistance',stage:1},
+  {w:'Aeromonas hydrophila',hint:'Aquatic Gram−; wound infections after water exposure',stage:1},
+  {w:'Acinetobacter baumannii',hint:'ESKAPE; carbapenem-resistant nosocomial superbug',stage:2},
+  {w:'Clostridioides difficile',hint:'Spore-forming; pseudomembranous colitis',stage:2},
+  {w:'Mycobacterium tuberculosis',hint:'Acid-fast; slow-growing; kills 1.5M per year',stage:2},
+  {w:'Klebsiella pneumoniae',hint:'KPC carbapenemase; WHO critical priority',stage:2},
+  {w:'Enterococcus faecium',hint:'VRE pathogen; gut commensal turned superbug',stage:2},
+  {w:'Mycobacterium leprae',hint:'Cannot be cultured in vitro; causes leprosy',stage:2},
+  {w:'Mycobacterium abscessus',hint:'Rapidly growing NTM; nightmare in CF patients',stage:2},
+  {w:'Nocardia asteroides',hint:'Aerobic actinomycete; immunocompromised lung infections',stage:2},
+  {w:'Actinomyces israelii',hint:'Anaerobic; cervicofacial actinomycosis',stage:2},
+  {w:'Fusobacterium nucleatum',hint:'Gram−; linked to colorectal cancer',stage:2},
+  {w:'Bacteroides fragilis',hint:'Most common anaerobic clinical isolate',stage:2},
+  {w:'Cutibacterium acnes',hint:'Formerly P. acnes; anaerobic; drives acne vulgaris',stage:2},
+  {w:'Streptococcus agalactiae',hint:'Group B strep; leading cause of neonatal sepsis',stage:2},
+  {w:'Streptococcus mutans',hint:'Primary cause of dental caries',stage:2},
+  {w:'Clostridium tetani',hint:'Drumstick spores; tetanospasmin neurotoxin',stage:2},
+  {w:'Corynebacterium diphtheriae',hint:'Pseudomembranous pharyngitis; exotoxin inhibits EF-2',stage:2},
+  {w:'Porphyromonas gingivalis',hint:'Keystone periodontal pathogen',stage:2},
+  {w:'Streptococcus viridans',hint:'Alpha-hemolytic; subacute bacterial endocarditis',stage:2},
+  {w:'Aggregatibacter actinomycetemcomitans',hint:'HACEK group; aggressive juvenile periodontitis',stage:2},
+  {w:'Treponema pallidum',hint:'Corkscrew motility; cannot be cultured; syphilis',stage:3},
+  {w:'Borrelia burgdorferi',hint:'Tick-borne spirochete; Lyme disease',stage:3},
+  {w:'Yersinia pestis',hint:'Caused Black Death; flea-borne',stage:3},
+  {w:'Bacillus anthracis',hint:'Endospore-forming; anthrax; BSL-3 select agent',stage:3},
+  {w:'Candida auris',hint:'Multidrug-resistant yeast; nosocomial outbreaks',stage:3},
+  {w:'Cryptococcus neoformans',hint:'Encapsulated yeast; fatal meningitis in AIDS',stage:3},
+  {w:'Aspergillus fumigatus',hint:'Most common invasive aspergillosis mold',stage:3},
+  {w:'Histoplasma capsulatum',hint:'Dimorphic; bird and bat droppings',stage:3},
+  {w:'Coccidioides immitis',hint:'Dimorphic; San Joaquin valley fever',stage:3},
+  {w:'Blastomyces dermatitidis',hint:'Dimorphic; broad-based budding; North America',stage:3},
+  {w:'Sporothrix schenckii',hint:'Rose thorn disease; lymphocutaneous nodules',stage:3},
+  {w:'Pneumocystis jirovecii',hint:'Atypical fungus; pneumonia in AIDS patients',stage:3},
+  {w:'Talaromyces marneffei',hint:'Dimorphic; bamboo rat; AIDS-defining SE Asia',stage:3},
+  {w:'Microsporum canis',hint:'Dermatophyte; ringworm from cats and dogs',stage:3},
+  {w:'Trichophyton rubrum',hint:'Most common cause of athlete foot',stage:3},
+  {w:'Rickettsia typhi',hint:'Murine typhus; rat flea vector',stage:3},
+  {w:'Burkholderia pseudomallei',hint:'Melioidosis; BSL-3; tropical soil',stage:3},
+  {w:'Orientia tsutsugamushi',hint:'Scrub typhus; Leptotrombidium mite; Asia-Pacific',stage:3},
+];
+const STAGES=[
+  {name:'Beginner',emoji:'🌱',attempts:3},
+  {name:'Intermediate',emoji:'🔬',attempts:3},
+  {name:'Advanced',emoji:'⚗️',attempts:2},
+  {name:'Expert',emoji:'🧬',attempts:2},
+];
+const TAX={
+  'escherichia coli':['Phylum: Proteobacteria','Gram −','Facultative anaerobe','Gut commensal & pathogen'],
+  'staphylococcus aureus':['Phylum: Firmicutes','Gram +','Coagulase +','MRSA strains endemic'],
+  'pseudomonas aeruginosa':['Phylum: Proteobacteria','Gram −','Pyocyanin pigment','ESKAPE pathogen'],
+  'klebsiella pneumoniae':['Phylum: Proteobacteria','Gram −','KPC carbapenemase','WHO critical priority'],
+  'mycobacterium tuberculosis':['Phylum: Actinobacteria','Acid-fast bacillus','Kills 1.5M+ per year'],
+  'clostridioides difficile':['Phylum: Firmicutes','Gram +','Spore-forming','Toxin A & B'],
+  'helicobacter pylori':['Phylum: Proteobacteria','Gram −','Urease +','WHO Group 1 carcinogen'],
+  'acinetobacter baumannii':['Phylum: Proteobacteria','Gram −','Carbapenem-resistant','ESKAPE'],
+  'candida auris':['Kingdom: Fungi','Multidrug resistant','CDC urgent threat'],
+  'cryptococcus neoformans':['Kingdom: Fungi','Encapsulated yeast','Fatal meningoencephalitis'],
+  'aspergillus fumigatus':['Kingdom: Fungi','Thermotolerant mold','Most common invasive mold'],
+};
+
+/* ════════════════════════════
+   MQTT SPEED RACE ENGINE
+
+   PROTOCOL (all messages tiny JSON over WebSocket):
+   ping    → host heartbeat so guest can find room
+   join    → guest announces arrival
+   start   → host sends seed to guest; game begins simultaneously
+   typing  → live keystrokes for race bar display
+   correct → "I just got it right" — first one received WINS the round
+   wrong   → attempt used (so opponent can see racer status)
+   skip    → I skipped this word
+   next    → host tells guest to advance to next word
+   score   → full score packet so both boards stay in sync
+   victory → I finished all words
+════════════════════════════ */
+let mq=null, room='', role='', net=false, joined=false;
+let roundOver=false; // true once someone wins or both exhaust
+
+function myTopic(){ return `mbrace/${room}/${role}`; }
+function opTopic(){ return `mbrace/${room}/${role==='host'?'guest':'host'}`; }
+
+function mqConnect(cb){
+  setStatus('connecting','Connecting…');
+  const id='mbr_'+Math.random().toString(36).slice(2,10);
+  mq=mqtt.connect('wss://broker.hivemq.com:8884/mqtt',{clientId:id,clean:true,connectTimeout:9000,reconnectPeriod:0});
+  mq.on('connect',()=>{setStatus('connected','Connected ✓');$('connBadge').textContent='🟢 Online';$('connBadge').className='badge live';cb();});
+  mq.on('error',e=>setStatus('error','Error: '+e.message));
+  mq.on('offline',()=>{ if(net) toast('Connection lost','err'); });
+  mq.on('message',(t,p)=>{ try{ onMsg(JSON.parse(p.toString())); }catch(e){} });
+}
+function pub(type,data={}){
+  if(!mq||!mq.connected)return;
+  mq.publish(myTopic(),JSON.stringify({type,...data}),{qos:1,retain:false});
+}
+function mqDisconnect(){ if(mq){try{mq.end(true);}catch(e){}} mq=null;net=false;joined=false;room='';role=''; }
+
+/* ─ CREATE ─ */
+function createRoom(){
+  myName=$('multiName').value.trim()||'Player 1';
+  room=genCode();role='host';
+  mqConnect(()=>{
+    mq.subscribe(opTopic(),{qos:1});
+    $('createSection').style.display='none';
+    $('roomCodeDisplay').style.display='';
+    $('rcCode').textContent=room;
+    setStatus('connecting','Waiting for opponent…');
+    const t=setInterval(()=>{ if(!joined)pub('ping',{name:myName}); else clearInterval(t); },1500);
+  });
+}
+/* ─ JOIN ─ */
+function joinRoom(){
+  const code=$('joinCode').value.trim().toUpperCase();
+  if(code.length<4){setStatus('error','Enter a valid room code');return;}
+  myName=$('multiName').value.trim()||'Player 2';
+  room=code;role='guest';
+  mqConnect(()=>{
+    mq.subscribe(opTopic(),{qos:1});
+    setStatus('connecting','Joining '+room+'…');
+    pub('join',{name:myName});
+  });
+}
+window.createRoom=createRoom;window.joinRoom=joinRoom;
+
+/* ─ MESSAGE HANDLER ─ */
+function onMsg(msg){
+  switch(msg.type){
+
+    case 'ping':
+      if(role==='guest'){ oppName=msg.name||'Host'; pub('join',{name:myName}); }
+      break;
+
+    case 'join':
+      if(role==='host'&&!joined){
+        joined=true; oppName=msg.name||'Player 2';
+        toast('🎉 '+oppName+' joined! Starting…','ok');
+        setTimeout(()=>{
+          const seed=Date.now();
+          pub('start',{seed,hostName:myName});
+          net=true; startNetGame(buildPool(seed));
+        },700);
+      }
+      break;
+
+    case 'start':
+      if(role==='guest'){
+        oppName=msg.hostName||'Host';
+        net=true; startNetGame(buildPool(msg.seed));
+      }
+      break;
+
+    case 'typing':
+      // Show opponent typing in race bar
+      $('racerOppText').textContent = msg.text||'…';
+      $('racerOpp').classList.toggle('typing', !!msg.text);
+      break;
+
+    case 'correct':
+      // ══ OPPONENT got it right ══
+      // Update their score immediately on MY screen
+      oppScore  += msg.pts||0;
+      oppWins   ++;
+      oppStreak  = msg.streak||0;
+      oppTotal  ++;
+      oppCorrect++;
+
+      if(!roundOver){
+        // They were first — they win this round
+        roundOver=true;
+        racerResult('opp','correct','✓ '+msg.answer);
+        showBanner('opp-won', '😤', (oppName||'Opponent')+' was faster!',
+          msg.answer||'', msg.pts||0);
+        lockCard(true);
+        scheduleNext(2800);
+      }
+      syncOppBoard();
+      break;
+
+    case 'wrong':
+      racerResult('opp','r-wrong','✗');
+      setTimeout(()=>{ $('racerOpp').className='racer'; $('racerOppBadge').textContent=''; },900);
+      break;
+
+    case 'skip':
+      oppTotal++;oppStreak=0;
+      racerResult('opp','r-wrong','→ skipped');
+      if(!roundOver){
+        // Both skipped — host drives next
+        if(role==='guest') scheduleNext(2000);
+      }
+      syncOppBoard();
+      break;
+
+    case 'next':
+      if(role==='guest') doNext();
+      break;
+
+    case 'score':
+      // Full sync — override opp values with authoritative packet
+      oppScore  =msg.score;
+      oppWins   =msg.wins;
+      oppStreak =msg.streak;
+      oppCorrect=msg.correct;
+      oppTotal  =msg.total;
+      syncOppBoard();
+      break;
+
+    case 'victory':
+      oppScore=msg.score||oppScore;
+      oppWins =msg.wins ||oppWins;
+      finalVictory();
+      break;
+  }
+}
+
+/* ─ SCORE PUSH ─ push my full score to opponent after every change ─ */
+function pushScore(){
+  pub('score',{score:myScore,wins:myWins,streak:myStreak,correct:myCorrect,total:myTotal});
+}
+
+/* ─ BANNER ─ */
+function showBanner(cls, icon, main, sub, pts){
+  const b=$('roundBanner');
+  b.className='round-banner show '+cls;
+  $('rbIcon').textContent=icon;
+  $('rbMain').textContent=main;
+  $('rbSub').textContent = sub ? '✓ '+sub : 'Nobody spelled it';
+  $('rbPts').textContent = pts>0 ? '+'+pts : '';
+}
+
+/* ─ RACE BAR HELPERS ─ */
+function racerResult(who, cls, text){
+  const el=who==='me'?$('racerMe'):$('racerOpp');
+  const badge=who==='me'?$('racerMeBadge'):$('racerOppBadge');
+  el.className='racer '+cls;
+  badge.textContent=text;
+  badge.style.color=cls==='r-correct'?'var(--accent3)':'var(--err)';
+}
+function resetRacers(){
+  ['racerMe','racerOpp'].forEach(id=>{ $(id).className='racer'; });
+  $('racerMeText').textContent='—';
+  $('racerOppText').textContent='waiting…';
+  $('racerMeBadge').textContent='';
+  $('racerOppBadge').textContent='';
+}
+
+/* ─ NEXT WORD ─ */
+function scheduleNext(ms){
+  setTimeout(()=>{
+    if(role==='host'){ pub('next',{}); doNext(); }
+    else doNext(); // guest does it on its own too (triggered by host 'next' msg or skip symmetry)
+  }, ms);
+}
+function doNext(){
+  roundOver=false;
+  lockCard(false);
+  $('roundBanner').className='round-banner';
+  resetRacers();
+  nextWord();
+}
+
+function lockCard(on){
+  $('mainCard').style.pointerEvents = on?'none':'';
+  $('mainCard').style.opacity       = on?'.55':'1';
+}
+
+/* ─ POOL ─ */
+function buildPool(seed){
+  function shufl(arr,s){
+    const a=[...arr];let st=s;
+    function rng(){st=(st*1664525+1013904223)&0xffffffff;return(st>>>0)/4294967296;}
+    for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
+    return a;
+  }
+  return STAGES.map((_,i)=>shufl(ALL_WORDS.filter(w=>w.stage===i),seed+i));
+}
+
+/* ════════════════════════════
+   GAME STATE
+════════════════════════════ */
+let myName='Player 1',oppName='Opponent';
+let myScore=0,myWins=0,myCorrect=0,myTotal=0,myStreak=0,myBest=0;
+let oppScore=0,oppWins=0,oppCorrect=0,oppTotal=0,oppStreak=0;
+let pools=[],sIdx=0,wIdx=0,attempts=3;
+let modes={timed:false,hidden:false,audio:false,practice:false};
+let timerInt=null,timeLeft=30,startTime=null;
+const TMAX=30,ARCLEN=138.2,SMAX=10;
+let history=[],hintLv=0,hintUsed=false,waiting=false,wordNum=0;
+
+const $=id=>document.getElementById(id);
+const norm=s=>s.toLowerCase().trim();
+function shuffle(a){const r=[...a];for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]];}return r;}
+function genCode(){const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let s='';for(let i=0;i<6;i++)s+=c[Math.floor(Math.random()*c.length)];return s;}
+
+/* ─ nav ─ */
+function goScreen(id){['screenMode','screenSolo','screenMulti'].forEach(s=>$(s).classList.add('hidden'));$(id).classList.remove('hidden');}
+function goLobby(){
+  stopTimer();mqDisconnect();
+  $('gameArea').style.display='none';
+  $('vicOverlay').classList.remove('show');
+  $('roomCodeDisplay').style.display='none';
+  $('createSection').style.display='';
+  $('multiStatus').innerHTML='';
+  $('joinCode').value='';
+  $('connBadge').textContent='Offline';$('connBadge').className='badge';
+  $('modeBadge').textContent='Lobby';
+  goScreen('screenMode');
+}
+window.goLobby=goLobby;window.goScreen=goScreen;
+function copyCode(){navigator.clipboard.writeText(room).then(()=>toast('Code copied!','ok'));}
+window.copyCode=copyCode;
+function startSolo(){myName=$('soloName').value.trim()||'Player 1';net=false;initGame();}
+window.startSolo=startSolo;
+
+/* ─ init ─ */
+function initGame(){
+  pools=STAGES.map((_,i)=>shuffle(ALL_WORDS.filter(w=>w.stage===i)));
+  resetState();showArea(false);loadWord();
+}
+function startNetGame(pool){
+  pools=pool;resetState();showArea(true);syncMyBoard();syncOppBoard();loadWord();
+}
+function resetState(){
+  sIdx=0;wIdx=0;wordNum=0;
+  myScore=0;myWins=0;myCorrect=0;myTotal=0;myStreak=0;myBest=0;
+  oppScore=0;oppWins=0;oppCorrect=0;oppTotal=0;oppStreak=0;
+  history=[];hintLv=0;hintUsed=false;waiting=false;roundOver=false;
+  modes={timed:false,hidden:false,audio:false,practice:false};
+  ['mTimed','mHidden','mAudio','mPractice'].forEach(id=>$(id).classList.remove('on'));
+  $('modeBadge').textContent='Classic';
+  stopTimer();$('tnum').textContent='—';$('tlabel').textContent='Enable Timed Mode';
+  $('roundBanner').className='round-banner';
+  lockCard(false);
+}
+function showArea(is2P){
+  ['screenMode','screenSolo','screenMulti'].forEach(s=>$(s).classList.add('hidden'));
+  $('gameArea').style.display='flex';
+  $('scoreboard').style.display = is2P?'grid':'none';
+  $('raceBar').style.display    = is2P?'grid':'none';
+  $('statsRow').style.display   = is2P?'none':'grid';
+  $('streakWrap').style.display = is2P?'none':'flex';
+  $('modeRow').style.display    = is2P?'none':'flex';
+  $('shuffleBtn').style.display = is2P?'none':'flex';
+  if(is2P){
+    $('sbMeName').textContent    = myName;
+    $('sbOppName').textContent   = oppName||'Opponent';
+    $('racerMeLabel').textContent= myName;
+    $('racerOppLabel').textContent=oppName||'Opponent';
+    $('spellInput').placeholder  = '⚡ Type fast — first correct wins!';
+  } else {
+    $('spellInput').placeholder='Type the organism name…';
+  }
+}
+
+/* ─ SCOREBOARD SYNC ─
+   This is the key: every score change calls these
+   so both players always see each other's live score ─ */
+function syncMyBoard(){
+  if(!net)return;
+  $('sbMeScore').textContent = myScore;
+  $('sbMeWins').textContent  = myWins+' round'+(myWins!==1?'s':'')+' won';
+  $('sbMeStreak').textContent= myStreak>=2 ? myStreak+'🔥 streak' : '';
+  $('sbMe').classList.toggle('winner-bg', myScore>oppScore);
+  const sb=$('scoreboard');
+  if(myScore>oppScore) sb.className='scoreboard p1-leading';
+  else if(oppScore>myScore) sb.className='scoreboard p2-leading';
+  else sb.className='scoreboard';
+  bumpScore('sbMeScore');
+}
+function syncOppBoard(){
+  if(!net)return;
+  $('sbOppScore').textContent = oppScore;
+  $('sbOppWins').textContent  = oppWins+' round'+(oppWins!==1?'s':'')+' won';
+  $('sbOppStreak').textContent= oppStreak>=2 ? oppStreak+'🔥' : '';
+  $('sbOpp').classList.toggle('winner-bg', oppScore>myScore);
+  const sb=$('scoreboard');
+  if(myScore>oppScore) sb.className='scoreboard p1-leading';
+  else if(oppScore>myScore) sb.className='scoreboard p2-leading';
+  else sb.className='scoreboard';
+  bumpScore('sbOppScore');
+}
+function bumpScore(id){ const el=$(id); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); setTimeout(()=>el.classList.remove('bump'),400); }
+
+/* ─ SOLO STATS ─ */
+function updateStats(){
+  if(net){ syncMyBoard(); return; }
+  $('sScore').textContent=myScore;
+  $('sAcc').textContent=myTotal?Math.round(myCorrect/myTotal*100)+'%':'—';
+  $('sBest').textContent=myBest;
+  $('sWords').textContent=myTotal;
+  const sd=$('sdots');sd.innerHTML='';
+  for(let i=0;i<SMAX;i++){const d=document.createElement('div');d.className='sd'+(i<myStreak?' hit':'');sd.appendChild(d);}
+  $('scount').textContent=myStreak+(myStreak>=3?'🔥':'');
+}
+
+/* ─ WORD RENDERING ─ */
+function cw(){ return pools[sIdx][wIdx]; }
+function renderSlots(reveal=false){
+  const c=$('wslots');c.innerHTML='';
+  const word=cw().w,sf=modes.hidden&&!modes.audio;
+  word.split('').forEach((ch,i)=>{
+    const s=document.createElement('span');
+    if(ch===' ')s.className='ws space';
+    else if(reveal){s.className='ws rev';s.textContent=ch;}
+    else if(sf&&i===0){s.className='ws hfirst';s.textContent=ch;}
+    else s.className='ws';
+    c.appendChild(s);
+  });
+  const nsp=word.replace(/ /g,''),wc=word.split(' ').length;
+  $('wlen').textContent=`${wc} word${wc>1?'s':''} · ${nsp.length} letters`;
+}
+function buildRibbon(){
+  const r=$('stageRibbon');r.innerHTML='';
+  STAGES.forEach((s,i)=>{
+    const d=document.createElement('div');
+    d.className='stab'+(i<sIdx?' done':i===sIdx?' active':'');
+    d.innerHTML=`<div class="em">${s.emoji}</div><div>${s.name}</div>`;
+    r.appendChild(d);
+  });
+}
+function buildAttempts(){
+  const max=STAGES[sIdx].attempts,r=$('attRow');r.innerHTML='';
+  for(let i=0;i<max;i++){const d=document.createElement('div');d.className='adot'+(i>=attempts?' used':'');r.appendChild(d);}
+}
+
+/* ─ TIMER ─ */
+function updateArc(){
+  const p=timeLeft/TMAX;
+  $('tarc').style.strokeDashoffset=ARCLEN*(1-p);
+  $('tarc').style.stroke=p>.5?'var(--accent)':p>.25?'var(--warn)':'var(--err)';
+  $('tnum').textContent=timeLeft;
+}
+function startTimer(){
+  stopTimer();timeLeft=TMAX;startTime=Date.now();updateArc();
+  $('tlabel').textContent='Time Remaining';
+  timerInt=setInterval(()=>{
+    timeLeft--;updateArc();
+    if(timeLeft<=0){stopTimer();toast('⏱ Time up!','warn');skip();}
+  },1000);
+}
+function stopTimer(){clearInterval(timerInt);timerInt=null;}
+
+/* ─ MODES ─ */
+function toggleMode(m){
+  modes[m]=!modes[m];
+  const cap=m[0].toUpperCase()+m.slice(1);
+  $('m'+cap).classList.toggle('on',modes[m]);
+  if(m==='timed'){if(modes.timed){startTimer();$('modeBadge').textContent='Timed';}else{stopTimer();$('tnum').textContent='—';$('tlabel').textContent='Enable Timed Mode';$('modeBadge').textContent='Classic';}}
+  if(m==='hidden'||m==='audio')renderSlots();
+  if(m==='audio'&&modes.audio)speakWord();
+}
+window.toggleMode=toggleMode;
+
+/* ─ SPEECH ─ */
+function speakWord(){if(!('speechSynthesis' in window))return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(cw().w);u.rate=0.78;$('speakBtn').classList.add('listening');u.onend=()=>$('speakBtn').classList.remove('listening');speechSynthesis.speak(u);}
+window.speakWord=speakWord;
+
+/* ─ HINT ─ */
+function showHint(){
+  const h=$('hintBox');hintLv++;const wo=cw();let msg='';
+  if(hintLv===1)msg=`💡 ${wo.w.split(' ').length} word(s) · ${wo.w.replace(/ /g,'').length} letters`;
+  else if(hintLv===2)msg=`💡 Starts: "${wo.w.slice(0,4)}…"`;
+  else if(hintLv===3){msg=`💡 ${wo.hint}`;hintUsed=true;}
+  else msg=`💡 First word: "${wo.w.split(' ')[0]}"`;
+  h.textContent=msg;h.classList.add('show');
+}
+window.showHint=showHint;
+
+/* ─ TAXONOMY ─ */
+function showTax(){
+  const panel=$('taxPanel'),key=norm(cw().w),data=TAX[key];
+  if(!data){toast('No taxonomy data for this organism','warn');return;}
+  $('taxTags').innerHTML=data.map(t=>`<span class="ttag">${t}</span>`).join('');
+  panel.classList.toggle('vis');
+}
+window.showTax=showTax;
+function showTaxAuto(){const key=norm(cw().w),d=TAX[key];if(!d)return;$('taxTags').innerHTML=d.map(t=>`<span class="ttag">${t}</span>`).join('');$('taxPanel').classList.add('vis');}
+
+/* ─ INPUT ─ */
+function onType(){
+  const guess=$('spellInput').value,target=cw().w,fb=$('cfb');
+  if(net){
+    pub('typing',{text:guess});
+    $('racerMeText').textContent=guess||'—';
+    $('racerMe').classList.toggle('typing',!!guess);
+  }
+  if(!guess){fb.innerHTML='';return;}
+  let html='';
+  for(let i=0;i<Math.max(guess.length,target.length);i++){
+    const gc=guess[i]||'',tc=target[i]||'';
+    if(!gc) html+=`<span class="cf miss">_</span>`;
+    else if(gc.toLowerCase()===tc.toLowerCase()) html+=`<span class="cf ok">${gc}</span>`;
+    else html+=`<span class="cf bad">${gc}</span>`;
+  }
+  fb.innerHTML=html;
+}
+window.onType=onType;
+
+/* ══════════════════════════════════════
+   SUBMIT — core race logic
+   Points awarded ONLY to first correct answer
+══════════════════════════════════════ */
+function submit(){
+  if(waiting)return;
+  const guess=$('spellInput').value.trim();if(!guess)return;
+  const correct=norm(guess)===norm(cw().w);
+  myTotal++;
+
+  if(correct){
+    myCorrect++;myStreak++;myBest=Math.max(myStreak,myBest);
+    // Points: 5 base + 2 no-hint bonus + speed bonus in timed mode
+    const sp=modes.timed?Math.max(1,Math.ceil(timeLeft/4)):0;
+    const pts=5+(hintUsed?0:2)+sp;
+
+    $('spellInput').classList.add('correct');
+    setTimeout(()=>$('spellInput').classList.remove('correct'),600);
+    renderSlots(true); showTaxAuto();
+    addHist(cw().w,'correct',pts);
+
+    if(net){
+      stopTimer();
+      if(!roundOver){
+        // ══ WE WIN THIS ROUND ══
+        roundOver=true;
+        myScore+=pts; myWins++;
+        syncMyBoard();  // update our own board
+        pushScore();    // push to opponent so THEY see our new score
+        pub('correct',{pts,answer:guess,streak:myStreak});
+        racerResult('me','r-correct','✓ '+guess);
+        showBanner('i-won','🏆','You got it first!', guess, pts);
+        lockCard(true);
+        scheduleNext(2800);
+      }
+      // else: opponent already won — we got it too but too slow, no points
+    } else {
+      myScore+=pts;
+      waiting=true; setTimeout(()=>{waiting=false;nextWord();},900);
+    }
+  } else {
+    // Wrong
+    attempts--;myStreak=0;
+    $('spellInput').classList.add('wrong');
+    setTimeout(()=>$('spellInput').classList.remove('wrong'),450);
+    toast('✗ Incorrect','err');buildAttempts();
+    if(net) pub('wrong',{});
+
+    if(attempts<=0){
+      renderSlots(true);
+      addHist(cw().w,'failed',0);
+      if(net){
+        stopTimer();
+        // Out of attempts — treat as skip for race purposes
+        pub('skip',{});
+        if(!roundOver){
+          roundOver=true;
+          showBanner('nobody','😶','No one got it this round','',0);
+          scheduleNext(2400);
+        }
+      } else {
+        waiting=true; setTimeout(()=>{waiting=false;nextWord();},900);
+      }
+    }
+  }
+  updateStats();
+}
+window.submit=submit;
+
+/* ─ SKIP ─ */
+function skip(){
+  if(waiting)return;
+  myTotal++;myStreak=0;
+  renderSlots(true);addHist(cw().w,'skipped',0);
+  if(net){
+    stopTimer();
+    pub('skip',{});
+    if(!roundOver){
+      roundOver=true;
+      showBanner('nobody','😶','No one got it this round','',0);
+      scheduleNext(2400);
+    }
+  } else {
+    waiting=true;setTimeout(()=>{waiting=false;nextWord();},600);
+  }
+  updateStats();
+}
+window.skip=skip;
+
+function shuffleWord(){if(net)return;pools[sIdx]=shuffle(pools[sIdx]);wIdx=0;loadWord();}
+window.shuffleWord=shuffleWord;
+
+/* ─ NEXT WORD ─ */
+function nextWord(){
+  stopTimer();
+  $('hintBox').classList.remove('show');$('taxPanel').classList.remove('vis');$('cfb').innerHTML='';
+  hintLv=0;hintUsed=false;
+  if(modes.practice){wIdx=Math.floor(Math.random()*pools[sIdx].length);loadWord();return;}
+  wIdx++;
+  if(wIdx>=pools[sIdx].length){
+    if(sIdx<STAGES.length-1){
+      sIdx++;wIdx=0;
+      toast('Stage '+STAGES[sIdx].name+' unlocked! '+STAGES[sIdx].emoji,'ok');
+    } else {
+      if(net) pub('victory',{score:myScore,wins:myWins,correct:myCorrect,total:myTotal});
+      finalVictory(); return;
+    }
+  }
+  attempts=STAGES[sIdx].attempts;
+  loadWord();
+}
+
+/* ─ LOAD WORD ─ */
+function loadWord(){
+  wordNum++;
+  $('spellInput').value='';$('cfb').innerHTML='';
+  $('hintBox').classList.remove('show');$('taxPanel').classList.remove('vis');
+  hintLv=0;hintUsed=false;attempts=STAGES[sIdx].attempts;
+  startTime=modes.timed?Date.now():null;
+  renderSlots();buildAttempts();buildRibbon();
+  if(!net) updateStats(); // streak dots etc
+  if(modes.timed)startTimer();
+  if(modes.audio||(net))setTimeout(()=>speakWord(),200);
+  const tw=pools.reduce((a,s)=>a+s.length,0);
+  const dw=pools.slice(0,sIdx).reduce((a,s)=>a+s.length,0)+wIdx;
+  $('gprogBar').style.width=`${(dw/tw)*100}%`;
+  if(net){
+    $('wprompt').textContent='⚡ RACE — spell it first!';
+    $('wprompt').style.color='var(--warn)';
+    $('sbWord').textContent='Word '+wordNum;
+    resetRacers();
+  } else {
+    $('wprompt').textContent='Spell the organism';
+    $('wprompt').style.color='var(--muted)';
+  }
+  $('spellInput').focus();
+}
+
+/* ─ HISTORY ─ */
+function addHist(word,result,pts){
+  history.unshift({word,result,pts});if(history.length>40)history.pop();
+  const list=$('histList');
+  list.innerHTML=history.slice(0,15).map(h=>{
+    const cls=h.result==='correct'?'ok':h.result==='failed'?'bad':'sk';
+    const icon=h.result==='correct'?'✓':h.result==='failed'?'✗':'→';
+    return `<div class="hi"><span class="hi-r ${cls}">${icon}</span><span class="hi-w">${h.word}</span><span class="hi-pts">${h.pts>0?'+'+h.pts:''}</span></div>`;
+  }).join('');
+}
+
+/* ─ VICTORY ─ */
+function finalVictory(){
+  stopTimer();
+  if(!net){
+    const acc=myTotal?Math.round(myCorrect/myTotal*100):0;
+    $('vicEm').textContent='🏆';$('vicTitle').textContent='All Stages Complete!';
+    $('vicSub').textContent=`Score: ${myScore} · Accuracy: ${acc}% · Best Streak: ${myBest}`;
+    $('vicScores').innerHTML=`<div class="vsc win"><div class="vsn">${myName}</div><div class="vss" style="color:var(--accent)">${myScore}</div><div class="vsb">🎉 ${acc}%</div></div>`;
+  } else {
+    const tie=myScore===oppScore,win=myScore>oppScore;
+    $('vicEm').textContent=tie?'🤝':win?'🏆':'😤';
+    $('vicTitle').textContent=tie?"It's a Tie!":win?myName+' Wins!':oppName+' Wins!';
+    $('vicSub').textContent=win?'You spelled faster more often!':tie?'Perfectly matched!':'They outpaced you this time!';
+    const ma=myTotal?Math.round(myCorrect/myTotal*100):0;
+    const oa=oppTotal?Math.round(oppCorrect/oppTotal*100):0;
+    $('vicScores').innerHTML=`
+      <div class="vsc${win||tie?' win':''}" style="border-color:${win||tie?'var(--p1)':''}">
+        <div class="vsn" style="color:var(--p1)">${myName} (You)</div>
+        <div class="vss" style="color:var(--p1)">${myScore}</div>
+        <div class="vsb">${myWins} rounds won · ${ma}%${win?' 👑':''}</div>
+      </div>
+      <div class="vsc${!win&&!tie?' win':''}" style="border-color:${!win?'var(--p2)':''}">
+        <div class="vsn" style="color:var(--p2)">${oppName}</div>
+        <div class="vss" style="color:var(--p2)">${oppScore}</div>
+        <div class="vsb">${oppWins} rounds won · ${oa}%${!win&&!tie?' 👑':''}</div>
+      </div>`;
+  }
+  $('vicOverlay').classList.add('show');
+  if(!net||myScore>=oppScore)confetti();
+  mqDisconnect();
+}
+
+/* ─ CONFETTI ─ */
+function confetti(){
+  const cv=$('confettiCanvas'),ctx=cv.getContext('2d');
+  cv.width=innerWidth;cv.height=innerHeight;
+  const ps=Array.from({length:150},()=>({x:Math.random()*cv.width,y:Math.random()*-cv.height,r:Math.random()*8+3,d:Math.random()*2+1.5,c:['#00e5ff','#7c3aed','#10b981','#f59e0b','#f472b6'][Math.floor(Math.random()*5)],a:Math.random()*360,sp:(Math.random()-.5)*5}));
+  let fr=0;(function draw(){ctx.clearRect(0,0,cv.width,cv.height);ps.forEach(p=>{ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a*Math.PI/180);ctx.fillStyle=p.c;ctx.fillRect(-p.r/2,-p.r/2,p.r,p.r*.6);ctx.restore();p.y+=p.d*3;p.a+=p.sp;if(p.y>cv.height){p.y=-20;p.x=Math.random()*cv.width;}});if(++fr<200)requestAnimationFrame(draw);else ctx.clearRect(0,0,cv.width,cv.height);})();
+}
+
+/* ─ TOAST ─ */
+let tTO;
+function toast(msg,type='ok'){
+  clearTimeout(tTO);
+  const colors={ok:'#10b981',err:'#ef4444',warn:'#f59e0b'};
+  let t=document.querySelector('.flash-toast');
+  if(!t){t=document.createElement('div');t.className='flash-toast';t.style.cssText='position:fixed;bottom:20px;right:20px;padding:11px 16px;border-radius:11px;font-family:var(--fm);font-size:.8rem;z-index:200;transition:all .22s;pointer-events:none;background:var(--surface);border:1px solid;';document.body.appendChild(t);}
+  t.textContent=msg;t.style.borderColor=colors[type];t.style.color=colors[type];t.style.opacity='1';t.style.transform='translateY(0)';
+  tTO=setTimeout(()=>{t.style.opacity='0';t.style.transform='translateY(8px)';},2400);
+}
+function setStatus(cls,msg){
+  $('multiStatus').innerHTML=`<div class="spill ${cls}"><div class="spill-dot${cls==='connecting'?' pulse':''}"></div>${msg}</div>`;
+}
+
+/* ─ KEYBOARD ─ */
+document.addEventListener('keydown',e=>{
+  if(e.target===$('spellInput'))return;
+  if(e.key===' '){e.preventDefault();speakWord();}
+  if(e.key==='h')showHint();
+  if(e.key==='t')showTax();
+  if(e.key==='s'&&!net)skip();
+});
+</script>
+</body>
+</html>
